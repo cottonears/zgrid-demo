@@ -1,0 +1,19 @@
+.{
+    .name = .zgrid_demo,
+    .version = "0.1.0",
+    .fingerprint = 0x14981b7b8bf7dc58,
+    .minimum_zig_version = "0.17.0",
+    .dependencies = .{
+        .zgrid = .{
+            .url = "git+https://github.com/cottonears/zgrid#76be9a7e27d2b9c3622e337060cdda59530b009d",
+            .hash = "zgrid-0.1.0-gT-P0DekAgDwQKnky-wx8XfqeubGi7_lm0aWYF8Fv61c",
+        },
+    },
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+        "LICENSE",
+        "README.md",
+    },
+}
