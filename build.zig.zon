@@ -4,6 +4,14 @@
     .fingerprint = 0x14981b7b8bf7dc58,
     .minimum_zig_version = "0.17.0",
     .dependencies = .{
+        .sdl = .{
+            .url = "git+https://github.com/castholm/SDL.git?ref=v0.6.0%2B3.4.18#dbcb19aa3583c318556ecae3ecbeb29b102d37c5",
+            .hash = "sdl-0.6.0+3.4.18-SDL--p-gqAGWpnfTLlhs0dgjDtc4P4_CHeNLGY_SX_Fv",
+        },
+        .translate_c = .{
+            .url = "git+https://codeberg.org/ziglang/translate-c?ref=zig-0.17.x#f978dca0f2b2a782d06591989e80aae7c74d0183",
+            .hash = "translate_c-2.0.1-Q_BUWmVOBwDWdxpDb7n6-LpMznKteZvXbL_4r6DxB2_d",
+        },
         .zgrid = .{
             .url = "git+https://github.com/cottonears/zgrid#76be9a7e27d2b9c3622e337060cdda59530b009d",
             .hash = "zgrid-0.1.0-gT-P0DekAgDwQKnky-wx8XfqeubGi7_lm0aWYF8Fv61c",
