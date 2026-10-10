@@ -10,17 +10,18 @@ pub const expl_lifetime = 7;
 pub const substeps = 7;
 
 const expl_speed = 6.0;
+const expl_growth: f32 = expl_speed / @as(f32, substeps);
+const expl_max_overlaps = 8_192;
 const gravity: Vec2f = .{ 0, 300 };
 const max_push = 2.0;
 const response_coef: f32 = 0.65;
 const wall_damping: f32 = 0.8;
 const speed_limit_ratio: f32 = 0.499;
-const bucket_pairs_per_task = 16_384;
-const strips_per_background_worker = 4;
-const max_explosion_overlaps = 8_192;
-const no_pair = std.math.maxInt(PairIndex);
 const sub_dt: f32 = 0.016667 / @as(f32, substeps);
-const explosion_growth_per_substep: f32 = expl_speed / @as(f32, substeps);
+
+const no_pair = std.math.maxInt(PairIndex);
+const pairs_per_task = 16_384;
+const strips_per_bg_worker = 4;
 
 pub const Explosion = struct {
     boundary: Ball2f,
@@ -32,11 +33,11 @@ pub const State = struct {
     balls: []Ball2f,
     prev_centres: []Vec2f,
     ball_indexes: []ClientId,
-    balls_spawned: usize = 0,
+    ball_count: usize = 0,
     max_ball_radius: f32 = 0,
     explosion: ?Explosion = null,
     tree: SquareTree,
-    expl_buf: [max_explosion_overlaps][2]ClientId = undefined,
+    expl_buf: [expl_max_overlaps][2]ClientId = undefined,
     overlap_buf: [][2]ClientId,
     pair_next: []PairIndex,
     strip_heads: []PairIndex,
@@ -66,7 +67,7 @@ pub const State = struct {
         errdefer allocator.free(pair_next);
         const background_workers: usize = max_workers;
         const worker_count = background_workers + 1;
-        const num_strips = strips_per_background_worker * background_workers;
+        const num_strips = strips_per_bg_worker * background_workers;
         const strip_heads = try allocator.alloc(PairIndex, worker_count * num_strips);
         const strips: f32 = @floatFromInt(num_strips);
         return .{
@@ -96,13 +97,13 @@ pub const State = struct {
     }
 
     pub fn addBall(self: *State, ball: Ball2f, prev_centre: Vec2f) ?usize {
-        if (self.balls_spawned >= self.balls.len) return null;
-        const i = self.balls_spawned;
+        if (self.ball_count >= self.balls.len) return null;
+        const i = self.ball_count;
         self.balls[i] = ball;
         self.prev_centres[i] = prev_centre;
         self.ball_indexes[i] = @intCast(i);
         self.max_ball_radius = @max(self.max_ball_radius, ball.radius);
-        self.balls_spawned += 1;
+        self.ball_count += 1;
         return i;
     }
 
@@ -110,11 +111,11 @@ pub const State = struct {
         for (0..substeps) |_| {
             self.integrate();
             self.tree.clear();
-            try self.tree.add(self.balls[0..self.balls_spawned], self.ball_indexes[0..self.balls_spawned]);
+            try self.tree.add(self.balls[0..self.ball_count], self.ball_indexes[0..self.ball_count]);
             try self.tree.buildParallel(io);
 
             if (self.explosion) |*explosion| {
-                explosion.boundary.radius += explosion_growth_per_substep;
+                explosion.boundary.radius += expl_growth;
                 const hits = try self.tree.findExtOverlapsSingle(&self.expl_buf, 0, explosion.boundary);
                 const expl_radius = explosion.boundary.radius;
                 for (hits) |pair| {
@@ -123,10 +124,10 @@ pub const State = struct {
                     const dist_sq = @reduce(.Add, d * d);
                     const r_sum = ball.radius + expl_radius;
                     if (dist_sq >= r_sum * r_sum or dist_sq < 1e-8) continue;
+                    const r_sq = ball.radius * ball.radius;
                     const dist = @sqrt(dist_sq);
-                    const desired_push = (r_sum - dist) * response_coef *
-                        (2 * ball.radius * ball.radius / expl_radius);
-                    ball.centre = @as(Vec2f, ball.centre) + d * @as(Vec2f, @splat(@min(max_push, desired_push) / dist));
+                    const push = (r_sum - dist) * response_coef * (2 * r_sq / expl_radius);
+                    ball.translate(d * @as(Vec2f, @splat(@min(max_push, push) / dist)));
                 }
             }
 
@@ -138,7 +139,7 @@ pub const State = struct {
     fn integrate(self: *State) void {
         const accel = gravity * @as(Vec2f, @splat(sub_dt * sub_dt));
         const world_size = self.world_size;
-        for (self.balls[0..self.balls_spawned], self.prev_centres[0..self.balls_spawned]) |*ball, *prev| {
+        for (self.balls[0..self.ball_count], self.prev_centres[0..self.ball_count]) |*ball, *prev| {
             const radius = ball.radius;
             const last_centre: Vec2f = ball.centre;
             var disp = last_centre - prev.* + accel;
@@ -175,18 +176,17 @@ pub const State = struct {
 
     fn resolve(self: *State, io: std.Io, overlaps: []const [2]ClientId) !void {
         if (overlaps.len == 0) return;
-        const bucket_workers = @min(self.worker_count, (overlaps.len + bucket_pairs_per_task - 1) / bucket_pairs_per_task);
-        const heads = self.strip_heads[0 .. bucket_workers * self.num_strips];
+        const num_workers = @min(self.worker_count, (overlaps.len + pairs_per_task - 1) / pairs_per_task);
+        const heads = self.strip_heads[0 .. num_workers * self.num_strips];
         @memset(heads, no_pair);
         var bucket_group: std.Io.Group = .init;
         errdefer bucket_group.cancel(io);
-        for (0..bucket_workers - 1) |worker| {
-            bucket_group.async(io, bucketOverlapRange, .{ self, overlaps, heads, worker, bucket_workers });
+        for (0..num_workers - 1) |worker| {
+            bucket_group.async(io, bucketOverlapRange, .{ self, overlaps, heads, worker, num_workers });
         }
-        try self.bucketOverlapRange(overlaps, heads, bucket_workers - 1, bucket_workers);
+        try self.bucketOverlapRange(overlaps, heads, num_workers - 1, num_workers);
         try bucket_group.await(io);
 
-        // Alternating strips keep concurrently resolved pairs separated.
         for (0..2) |parity| {
             const task_count = @min(self.worker_count, (self.num_strips + 1 - parity) / 2);
             var next_strip: std.atomic.Value(usize) = .init(parity);
