@@ -107,6 +107,7 @@ var prev_space_down: bool = false;
 
 pub fn init(
     allocator: std.mem.Allocator,
+    max_vertices: u32,
     name: []const u8,
     win_width: u16,
     win_height: u16,
@@ -129,9 +130,9 @@ pub fn init(
         return error.SDLInitFailed;
     }
 
-    vertices = try std.ArrayList(c.SDL_Vertex).initCapacity(allocator, 1_000_000);
+    vertices = try std.ArrayList(c.SDL_Vertex).initCapacity(allocator, max_vertices);
     errdefer vertices.deinit(allocator);
-    indices = try std.ArrayList(c_int).initCapacity(allocator, 3 * 1_000_000);
+    indices = try std.ArrayList(c_int).initCapacity(allocator, 3 * max_vertices);
     errdefer indices.deinit(allocator);
 }
 
