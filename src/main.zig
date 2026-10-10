@@ -96,10 +96,10 @@ fn update(io: std.Io, state: *State, random: std.Random, paused: bool, draw_list
             expl.lifetime -= 1;
             if (expl.lifetime == 0) state.explosion = null;
         }
-        if (state.balls_spawned < num_balls) {
-            const h = 360 * @as(f32, @floatFromInt(state.balls_spawned)) / num_balls;
+        if (state.ball_count < num_balls) {
+            const h = 360 * @as(f32, @floatFromInt(state.ball_count)) / num_balls;
             const colour = sdl.Colour.fromHsl(h, 0.6, 0.6);
-            const count = @min(spawn_rate, state.balls.len - state.balls_spawned);
+            const count = @min(spawn_rate, state.balls.len - state.ball_count);
             const x_max: f32 = state.world_size[0];
             for (0..count) |i| {
                 const radius = @max(min_radius, mean_radius + sdev_radius * random.floatNorm(f32));
@@ -116,7 +116,7 @@ fn update(io: std.Io, state: *State, random: std.Random, paused: bool, draw_list
     }
     // translate to draw commands
     draw_list.clearRetainingCapacity();
-    for (state.balls[0..state.balls_spawned], ball_cols[0..state.balls_spawned]) |ball, colour| {
+    for (state.balls[0..state.ball_count], ball_cols[0..state.ball_count]) |ball, colour| {
         draw_list.appendAssumeCapacity(.{
             .octagon = .{ .colour = colour, .centre = ball.centre, .radius = ball.radius },
         });

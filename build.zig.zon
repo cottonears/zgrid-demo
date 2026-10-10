@@ -13,8 +13,8 @@
             .hash = "translate_c-2.0.1-Q_BUWmVOBwDWdxpDb7n6-LpMznKteZvXbL_4r6DxB2_d",
         },
         .zgrid = .{
-            .url = "git+https://github.com/cottonears/zgrid#76be9a7e27d2b9c3622e337060cdda59530b009d",
-            .hash = "zgrid-0.1.0-gT-P0DekAgDwQKnky-wx8XfqeubGi7_lm0aWYF8Fv61c",
+            .url = "git+https://github.com/cottonears/zgrid#ef7ffcf19b9fc7f4816b15a2f7f52671de4c8b68",
+            .hash = "zgrid-0.1.0-gT-P0DakAgCQc2pizkIbWdJvtzYfBW7h_gLeQsJB2wr8",
         },
     },
     .paths = .{
