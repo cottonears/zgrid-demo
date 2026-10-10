@@ -66,12 +66,6 @@ pub const OctagonInfo = struct {
     };
 };
 
-pub const RectInfo = struct {
-    min: @Vector(2, f32),
-    max: @Vector(2, f32),
-    colour: Colour,
-};
-
 pub const RegularPolyInfo = struct {
     num_sides: u8,
     centre: @Vector(2, f32),
@@ -88,7 +82,6 @@ pub const TextInfo = struct {
 
 pub const DrawCommand = union(enum) {
     octagon: OctagonInfo,
-    rectangle: RectInfo,
     regular_poly: RegularPolyInfo,
     text: TextInfo,
 };
@@ -149,17 +142,18 @@ pub fn render(render_queue: []DrawCommand) !void {
     for (render_queue) |cmd| {
         switch (cmd) {
             .octagon => queueOctagon(cmd.octagon),
-            .rectangle => renderRectangle(cmd.rectangle),
-            .regular_poly => try queueRegularPoly(cmd.regular_poly),
-            .text => renderText(cmd.text),
+            .regular_poly => queueRegularPoly(cmd.regular_poly),
+            .text => {
+                flushGeometry();
+                renderText(cmd.text);
+            },
         }
     }
     frameEnd();
 }
 
 fn flushGeometry() void {
-    if (vertices.items.len == 0)
-        return;
+    if (vertices.items.len == 0) return;
     _ = c.SDL_RenderGeometry(
         renderer,
         null,
@@ -168,6 +162,9 @@ fn flushGeometry() void {
         indices.items.ptr,
         @intCast(indices.items.len),
     );
+
+    vertices.clearRetainingCapacity();
+    indices.clearRetainingCapacity();
 }
 
 fn frameStart() void {
@@ -214,16 +211,6 @@ pub fn getRequests(req_buffer: []Request) []Request {
     return req_buffer[0..buff_index];
 }
 
-fn getSdlFRect(rect: RectInfo) c.SDL_FRect {
-    var sdl_rect: c.SDL_FRect = undefined;
-    const diff = rect.max - rect.min;
-    sdl_rect.x = rect.min[0];
-    sdl_rect.y = rect.max[1];
-    sdl_rect.w = diff[0];
-    sdl_rect.h = diff[1];
-    return sdl_rect;
-}
-
 fn getSdlFColour(col: Colour) c.SDL_FColor {
     // NOTE: SDL_FColor channels are normalised floats in [0, 1].
     var sdl_col: c.SDL_FColor = undefined;
@@ -248,8 +235,8 @@ fn queueOctagon(oct: OctagonInfo) void {
     }
 }
 
-fn queueRegularPoly(p: RegularPolyInfo) !void {
-    if (p.num_sides < 3) return error.InvalidNumberOfSides;
+fn queueRegularPoly(p: RegularPolyInfo) void {
+    std.debug.assert(p.num_sides > 2);
     const base: c_int = @intCast(vertices.items.len);
     const angle_inc = 2 * std.math.pi / @as(f32, @floatFromInt(p.num_sides));
     for (0..p.num_sides) |i| {
@@ -265,13 +252,6 @@ fn queueRegularPoly(p: RegularPolyInfo) !void {
         indices.appendAssumeCapacity(base + @as(c_int, @intCast(i)));
         indices.appendAssumeCapacity(base + 0);
     }
-}
-
-fn renderRectangle(rect: RectInfo) void {
-    const col = rect.colour;
-    const sdl_rect = getSdlFRect(rect);
-    _ = c.SDL_SetRenderDrawColor(renderer, col.r, col.g, col.b, col.a);
-    _ = c.SDL_RenderFillRect(renderer, &sdl_rect);
 }
 
 fn renderText(text: TextInfo) void {

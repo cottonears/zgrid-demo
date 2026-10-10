@@ -10,12 +10,13 @@ const Vec2f = physics.Vec2f;
 const disp_width = 1920;
 const disp_height = 1080;
 const num_balls = 100_000;
+const min_radius = 1.0;
 const mean_radius = 2.0;
-const sdev_radius = 0.2;
+const sdev_radius = 0.25;
 const exit_frame = 0;
 const spawn_rate = 200;
 const target_frame_time_us = 16_667;
-const text_col = sdl.Colour.fromRgba(0xFFFFFFCC);
+const text_col = sdl.Colour.fromRgba(0xFFFFFFFF);
 
 var ball_cols: [num_balls]sdl.Colour = undefined;
 
@@ -39,7 +40,7 @@ pub fn main(init: std.process.Init) !void {
 
     var frame_times: FrameTimes = .{};
     var ft_str: [:0]const u8 = "---";
-    var ft_buf: [16]u8 = undefined;
+    var ft_buf: [32]u8 = undefined;
     var last_frame_end = timer.now(io);
     var paused = false;
     var quit = false;
@@ -59,7 +60,7 @@ pub fn main(init: std.process.Init) !void {
             }
         }
 
-        // 2. begin updating state
+        // 2. begin updating state (writes to draw_b)
         var update_future = io.async(update, .{ io, &state, random, paused, &draw_b });
         defer update_future.cancel(io) catch {};
 
@@ -69,17 +70,18 @@ pub fn main(init: std.process.Init) !void {
         );
         try sdl.render(draw_a.items);
 
-        // 4. complete updating state and write to draw_b
+        // 4. complete updating state and swap draw lists
         try update_future.await(io);
         std.mem.swap(DrawList, &draw_a, &draw_b);
 
         // 5. frame timing and pacing
-        const frame_us: i64 = @intCast(Timestamp.durationTo(last_frame_end, timer.now(io)).toMicroseconds());
+        const frame_us = Timestamp.durationTo(last_frame_end, timer.now(io)).toMicroseconds();
         frame_times.addSample(@intCast(frame_us));
         if (frame_us < target_frame_time_us) {
             try io.sleep(.fromMicroseconds(target_frame_time_us - frame_us), timer);
         }
-        ft_str = try frame_times.getAverageStr(&ft_buf, "us", 16);
+        const suffix = if (paused) " us - paused" else " us";
+        ft_str = try frame_times.getAverageStr(&ft_buf, suffix, 30);
         if (exit_frame > 0 and frame >= exit_frame) break;
         last_frame_end = timer.now(io);
         frame += 1;
@@ -100,13 +102,13 @@ fn update(io: std.Io, state: *State, random: std.Random, paused: bool, draw_list
             const count = @min(spawn_rate, state.balls.len - state.balls_spawned);
             const x_max: f32 = state.world_size[0];
             for (0..count) |i| {
-                const radius = mean_radius + sdev_radius * random.floatNorm(f32);
+                const radius = @max(min_radius, mean_radius + sdev_radius * random.floatNorm(f32));
                 const angle = std.math.pi * (0.5 + 0.1 * random.floatNorm(f32));
                 const x_off = @as(f32, @floatFromInt(i + 1)) * x_max / @as(f32, @floatFromInt(spawn_rate + 1));
                 const d = Vec2f{ mean_radius * std.math.cos(angle), mean_radius * std.math.sin(angle) };
                 const c = Vec2f{ x_off, radius };
                 const b = zgrid.Ball2f{ .centre = c, .radius = radius };
-                const index = state.addBall(b, c - d) orelse return;
+                const index = state.addBall(b, c - d) orelse break;
                 ball_cols[index] = colour;
             }
         }
@@ -160,8 +162,8 @@ const FrameTimes = struct {
         return @divTrunc(sum, @as(i64, samples));
     }
 
-    pub fn getAverageStr(self: *const Self, buf: []u8, units: []const u8, n: u16) ![:0]u8 {
+    pub fn getAverageStr(self: *const Self, buf: []u8, suffix: []const u8, n: u16) ![:0]u8 {
         const avg = self.getAverage(n);
-        return try std.fmt.bufPrintSentinel(buf, "{d} {s}", .{ avg, units }, 0);
+        return try std.fmt.bufPrintSentinel(buf, "{d}{s}", .{ avg, suffix }, 0);
     }
 };
